@@ -1,0 +1,13 @@
+/* Figma theme for Tailwind CSS v4. Paste after @import "tailwindcss"; */
+@theme {
+  --color-primary: #00B6FF;
+  --color-accent-1: #CB9FD2;
+  --color-accent-2: #24CB71;
+  --color-accent-3: #FF7237;
+  --color-accent-4: #FF3737;
+  --color-background: #FFFFFF;
+  --color-text: #000000;
+  --color-muted-text: #757575;
+  --font-heading: figmaSans, "figmaSans Fallback", "SF Pro Display", system-ui, helvetica, sans-serif;
+  --font-body: figmaSans, "figmaSans Fallback", "SF Pro Display", system-ui, helvetica, sans-serif;
+}

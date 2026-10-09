@@ -1,0 +1,11 @@
+/* Airbnb brand variables, extracted from https://www.airbnb.com/ */
+:root {
+  --color-primary: #FF385C;
+  --color-accent: #DA1249;
+  --color-background: #FFFFFF;
+  --color-text: #282828;
+  --color-muted-text: #6C6C6C;
+  --color-surface: #DDDDDD;
+  --color-neutral: #808080;
+  --font-heading: "Airbnb Cereal VF", Circular, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+}

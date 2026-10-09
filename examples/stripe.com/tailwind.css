@@ -1,0 +1,15 @@
+/* Stripe theme for Tailwind CSS v4. Paste after @import "tailwindcss"; */
+@theme {
+  --color-primary: #533AFD;
+  --color-accent-1: #7F7DFC;
+  --color-accent-2: #81B81A;
+  --color-accent-3: #50617A;
+  --color-accent-4: #F44BCC;
+  --color-background: #FFFFFF;
+  --color-text: #061B31;
+  --color-muted-text: #64748D;
+  --color-surface: #E5EDF5;
+  --color-neutral: #000000;
+  --font-heading: sohne-var, "SF Pro Display", sans-serif;
+  --font-body: sohne-var, "SF Pro Display", sans-serif;
+}

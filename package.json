@@ -1,0 +1,29 @@
+{
+  "name": "brand-guide-generator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn any company URL or name into a structured brand guide using TinyFish Search, Fetch and Browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "guide": "tsx scripts/guide.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@tiny-fish/sdk": "^0.8.0",
+    "next": "^16.4.0",
+    "playwright-core": "^1.64.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

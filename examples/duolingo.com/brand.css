@@ -1,0 +1,13 @@
+/* Duolingo brand variables, extracted from https://www.duolingo.com/ */
+:root {
+  --color-primary: #58CC02;
+  --color-accent: #1CB0F6;
+  --color-background: #FFFFFF;
+  --color-text: #4B4B4B;
+  --color-muted-text: #777777;
+  --color-neutral-1: #E5E5E5;
+  --color-neutral-2: #000000;
+  --font-heading: duolingo-sans, sans-serif;
+  --font-body: duolingo-sans, sans-serif;
+  --radius-button: 12px;
+}
