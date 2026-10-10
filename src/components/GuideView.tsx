@@ -147,12 +147,19 @@ export function GuideView({ guide }: { guide: BrandGuide }) {
             <div key={trait.name} className="trait">
               <h3>{trait.name}</h3>
               <p>{trait.description}</p>
-              <p className="do">
-                <strong>Do</strong> {trait.do}
-              </p>
-              <p className="dont">
-                <strong>Don&apos;t</strong> {trait.dont}
-              </p>
+              <div className="rule-box do">
+                <span className="rule-label">
+                  <i aria-hidden>✓</i> Do
+                </span>
+                <p>{trait.do}</p>
+              </div>
+              <div className="rule-box dont">
+                <span className="rule-label">
+                  <i aria-hidden>✕</i> Don&apos;t
+                </span>
+                <p>{trait.dont}</p>
+              </div>
+              {trait.evidence.length > 0 && <p className="evidence-label">How it sounds on their site</p>}
               {trait.evidence.map((quote) => (
                 <QuoteLine key={quote.quote} quote={quote} />
               ))}
@@ -198,7 +205,7 @@ export function GuideView({ guide }: { guide: BrandGuide }) {
         <div className="words">
           <div>
             <h3 className="sub">Words we use</h3>
-            <p className="chips">{guide.voice.preferredWords.map((word) => <span key={word}>{word}</span>)}</p>
+            <p className="chips use">{guide.voice.preferredWords.map((word) => <span key={word}>{word}</span>)}</p>
           </div>
           <div>
             <h3 className="sub">Words we avoid</h3>
@@ -423,6 +430,7 @@ function QuoteLine({ quote }: { quote: Quote }) {
   try {
     path = new URL(quote.sourceUrl).pathname;
   } catch {}
+  if (path === "/") path = "home";
   return (
     <blockquote className="quote">
       “{quote.quote}”{" "}

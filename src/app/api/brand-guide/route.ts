@@ -68,14 +68,26 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { input?: unknown };
   const input = validateInput(body.input);
   if (!input) return Response.json({ error: "Send {\"input\": \"<company URL or name>\"}." }, { status: 400 });
-  if (!cache.has(cacheKey(input)) && rateLimited(request)) {
+  // Re-attaching to a run already in flight (a reload) costs nothing, so it does not count.
+  if (!cache.has(cacheKey(input)) && !inFlight.has(cacheKey(input)) && rateLimited(request)) {
     return Response.json({ error: "Rate limit reached for this demo. Try an example guide, or run it locally." }, { status: 429 });
   }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (payload: unknown) => controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+      // A visitor who closes the tab or reloads must not kill the run: keep generating so the guide
+      // lands in the cache, and a reload that re-attaches gets it from there.
+      let open = true;
+      const send = (payload: unknown) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+        } catch {
+          open = false;
+          log("api.client_gone", { reason: "stream closed by the client; generation continues for the cache" });
+        }
+      };
       try {
         const guide = await getOrGenerate(input, (event) => send({ type: "progress", ...event }));
         send({ type: "result", guide });
@@ -84,7 +96,7 @@ export async function POST(request: Request) {
         log("api.failed", { reason: message.slice(0, 160) });
         send({ type: "error", message });
       } finally {
-        controller.close();
+        if (open) controller.close();
       }
     },
   });

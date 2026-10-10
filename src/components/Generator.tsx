@@ -1,66 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import type { BrandGuide, ProgressEvent } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
 import { GuideView } from "./GuideView";
-
-type Status = "idle" | "running" | "done" | "error";
+import { elapsed, jobTitle, useJobs, useNow } from "./Jobs";
 
 const ENDPOINT_BADGE: Record<string, string> = { search: "Search", fetch: "Fetch", browser: "Browser", llm: "Model" };
 
 export function Generator() {
+  const { jobs, selectedId, focusId, start, select, retry, markSeen, clearFocus } = useJobs();
   const [input, setInput] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
-  const [events, setEvents] = useState<ProgressEvent[]>([]);
-  const [guide, setGuide] = useState<BrandGuide | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const job = jobs.find((candidate) => candidate.id === selectedId) ?? null;
+  const now = useNow(job?.status === "running");
 
-  async function run(event: React.FormEvent) {
+  // The guide on screen counts as seen, so the dock stops announcing it.
+  useEffect(() => {
+    if (job?.status === "done" && !job.seen) markSeen(job.id);
+  }, [job?.id, job?.status, job?.seen, markSeen]);
+
+  // Arriving from the dock's "View guide": bring the guide into view.
+  useEffect(() => {
+    if (!focusId || focusId !== job?.id) return;
+    resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    clearFocus();
+  }, [focusId, job?.id, clearFocus]);
+
+  function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!input.trim() || status === "running") return;
-    setStatus("running");
-    setEvents([]);
-    setGuide(null);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/brand-guide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input }),
-      });
-      if (!response.ok || !response.body) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Request failed (${response.status})`);
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines.filter(Boolean)) {
-          const message = JSON.parse(line) as ({ type: "progress" } & ProgressEvent) | { type: "result"; guide: BrandGuide } | { type: "error"; message: string };
-          if (message.type === "progress") setEvents((previous) => [...previous, message]);
-          if (message.type === "result") {
-            setGuide(message.guide);
-            setStatus("done");
-          }
-          if (message.type === "error") throw new Error(message.message);
-        }
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      setStatus("error");
-    }
+    if (!input.trim()) return;
+    start(input);
+    setInput("");
   }
 
   return (
     <>
-      <form className="generator" onSubmit={run}>
+      <form className="generator" onSubmit={submit}>
         <input
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -68,24 +42,63 @@ export function Generator() {
           aria-label="Company website or name"
           autoFocus
         />
-        <button type="submit" className="button" disabled={status === "running" || !input.trim()}>
-          {status === "running" ? "Extracting…" : "Generate brand guide"}
+        <button type="submit" className="button" disabled={!input.trim()}>
+          Generate brand guide
         </button>
       </form>
 
-      {events.length > 0 && status !== "done" && (
-        <ol className="progress" aria-live="polite">
-          {events.map((event, index) => (
-            <li key={index} className={index === events.length - 1 && status === "running" ? "current" : ""}>
-              {event.endpoint && <span className={`endpoint ${event.endpoint}`}>{ENDPOINT_BADGE[event.endpoint]}</span>}
-              {event.message}
-            </li>
+      {jobs.length > 1 && (
+        <nav className="runs" aria-label="Your guides">
+          <span className="muted small">Your guides</span>
+          {jobs.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              className={`run-chip ${candidate.status}${candidate.id === selectedId ? " active" : ""}`}
+              onClick={() => select(candidate.id)}
+              aria-pressed={candidate.id === selectedId}
+            >
+              <span className="run-dot" aria-hidden />
+              {jobTitle(candidate)}
+            </button>
           ))}
-        </ol>
+        </nav>
       )}
-      {status === "running" && <p className="muted small">A full guide takes about a minute: the browser render and the voice analysis run in parallel.</p>}
-      {error && <p className="error">{error}</p>}
-      {guide && <GuideView guide={guide} />}
+
+      <div ref={resultRef} className="run-anchor">
+        {job && job.status !== "done" && (
+          <div className="run-status">
+            <p className="run-title">
+              <strong>{jobTitle(job)}</strong>
+              {job.status === "running" && <span className="muted small"> · {elapsed(now - job.startedAt)} elapsed</span>}
+            </p>
+            {job.events.length > 0 && (
+              <ol className="progress" aria-live="polite">
+                {job.events.map((event, index) => (
+                  <li key={index} className={index === job.events.length - 1 && job.status === "running" ? "current" : ""}>
+                    {event.endpoint && <span className={`endpoint ${event.endpoint}`}>{ENDPOINT_BADGE[event.endpoint]}</span>}
+                    {event.message}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {job.status === "running" && (
+              <p className="hint">
+                Takes about a minute. Feel free to open the example guides or start another brand: this keeps running, and it shows up in the corner when it is ready.
+              </p>
+            )}
+            {job.status === "error" && (
+              <div className="error run-error">
+                <span>{job.error}</span>
+                <button type="button" className="button ghost" onClick={() => retry(job.id)}>
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {job?.status === "done" && job.guide && <GuideView guide={job.guide} />}
+      </div>
     </>
   );
 }
