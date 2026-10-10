@@ -7,11 +7,11 @@
 
 import { cleanPages, measureWriting, type CorpusPage } from "./corpus";
 import { log } from "./log";
-import { planPages, type PageKind } from "./pages";
+import { countSitePages, planPages, planSectionPages, type PageKind, type PlannedPage } from "./pages";
 import { buildPalette } from "./palette";
 import { readPagesInBrowser, renderSite, type RenderedSite } from "./render";
 import { hostOf, resolveSite, siteKey } from "./resolve";
-import { TinyFishLedger, type FetchedPage } from "./tinyfish";
+import { TinyFishLedger, type FetchedPage, type SearchHit } from "./tinyfish";
 import type { BrandGuide, ProgressEvent } from "./types";
 import { buildTypography } from "./typography";
 import { analyseVoice } from "./voice";
@@ -19,6 +19,20 @@ import { analyseVoice } from "./voice";
 // Matched against the URL path only: titles like "What is a visual identity?" are SEO articles.
 const BRAND_PAGE_PATH = /\/(brand|brand-?guidelines?|brand-?assets|brand-?resources|press|press-?kit|media-?kit|media|logos?|identity|newsroom)(\/|$|-|\.)/i;
 const ARTICLE_PATH = /\/(blog|resources|guides|learn|articles?|posts?|insights)\//i;
+
+// Voice analysis wants breadth: at least this many pages in the corpus, topped up from generic site sections.
+const MIN_PLANNED_PAGES = 5;
+const MIN_CORPUS_PAGES = 4;
+const TARGET_CORPUS_WORDS = 1_500;
+const SPARE_PAGES = 3;
+// A homepage whose Fetch links number fewer than this was probably built by JavaScript.
+const SPARSE_HOME_LINKS = 25;
+const BROWSER_READ_CAP = 5;
+// Below these the voice section rests on too little copy to trust.
+const THIN_CORPUS_PAGES = 3;
+const THIN_CORPUS_WORDS = 800;
+// A cleaned page with fewer words than this was navigation or a stub, not copy.
+const MIN_PAGE_WORDS = 40;
 
 export async function generateBrandGuide(input: string, onProgress: (event: ProgressEvent) => void = () => {}): Promise<BrandGuide> {
   const startedAt = Date.now();
@@ -65,17 +79,36 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
   }
   if (!homeText) throw new Error(`Could not read ${site.homepage}: ${home.failures[0]?.error ?? "no content"}`);
 
-  const planned = planPages(homeUrl, homeLinks);
+  let planned = planPages(homeUrl, homeLinks);
+  let candidateLinks = [...homeLinks];
+  if (planned.length < MIN_PLANNED_PAGES && countSitePages(homeUrl, homeLinks) < SPARSE_HOME_LINKS) {
+    // Fetch saw a few links; the rendered homepage lists the links of the live DOM (menus, JS-built sections).
+    const renderedHome = await rendering;
+    const renderedLinks = renderedHome?.styles.links ?? [];
+    log("guide.rendered_links", { fetchLinks: homeLinks.length, renderedLinks: renderedLinks.length, rendered: Boolean(renderedHome) });
+    if (renderedLinks.length > 0) {
+      candidateLinks = [...candidateLinks, ...renderedLinks];
+      planned = planPages(homeUrl, candidateLinks);
+    }
+  }
   if (planned.length < 3) {
-    // JS-heavy homepages expose few links to Fetch; ask Search for the site's own key pages instead.
+    // Still few key pages; ask Search for the site's own about, product and careers pages.
     onProgress({ stage: "search", message: "Homepage links are sparse; searching the site for its about, product and careers pages", endpoint: "search" });
-    const siteHits = await tinyfish
+    const siteHits: SearchHit[] = await tinyfish
       .search(`${site.nameGuess} about mission products careers`, "Find the site's about, product, pricing and careers pages", { include_domains: siteKey(site.host) })
       .catch(() => []);
     const known = new Set(planned.map((page) => page.kind));
     const extra = planPages(homeUrl, siteHits.map((hit) => hit.url)).filter((page) => !known.has(page.kind));
     planned.push(...extra.slice(0, 6 - planned.length));
+    candidateLinks.push(...siteHits.map((hit) => hit.url));
     log("guide.page_search_fallback", { hits: siteHits.length, added: extra.length });
+  }
+  // Sites without about / product / pricing pages (tourism boards, marketplaces, magazines): read their main sections instead.
+  const sectionPages = planSectionPages(homeUrl, candidateLinks, planned.map((page) => page.url));
+  if (planned.length < MIN_PLANNED_PAGES && sectionPages.length > 0) {
+    const added = sectionPages.splice(0, MIN_PLANNED_PAGES - planned.length);
+    planned.push(...added);
+    log("guide.section_fallback", { named: planned.length - added.length, sections: added.length, spare: sectionPages.length });
   }
   onProgress({ stage: "search", message: "Searching the site for brand guidelines or a press kit", endpoint: "search" });
   const brandHits = await tinyfish
@@ -88,34 +121,67 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
     .slice(0, 2);
   log("guide.brand_pages", { searched: brandHits.length, kept: brandUrls.length });
 
-  const toRead = [...planned, ...brandUrls.map((url) => ({ url, kind: "brand" as PageKind }))];
-  let subPages: FetchedPage[] = [];
+  const toRead: PlannedPage[] = [...planned, ...brandUrls.map((url) => ({ url, kind: "brand" as PageKind }))];
   const browserRead: string[] = [];
-  if (toRead.length > 0) {
-    onProgress({ stage: "read", message: `Reading ${toRead.length} more pages: ${toRead.map((page) => page.kind).join(", ")}`, endpoint: "fetch" });
-    const fetched = await tinyfish.fetch(toRead.map((page) => page.url), "Read site pages for tone of voice, messaging and brand rules");
-    subPages = fetched.pages.filter((page) => page.text.length >= 200);
-    const unread = toRead.map((page) => page.url).filter((url) => !subPages.some((page) => page.url === url || page.url === `${url}/`));
+
+  // Fetch a batch of pages in one call; anything Fetch cannot read goes to the browser.
+  const readPages = async (batch: PlannedPage[]): Promise<FetchedPage[]> => {
+    const fetched = await tinyfish.fetch(batch.map((page) => page.url), "Read site pages for tone of voice, messaging and brand rules");
+    const pages = fetched.pages.filter((page) => page.text.length >= 200);
+    const unread = batch.map((page) => page.url).filter((url) => !pages.some((page) => page.url === url || page.url === `${url}/`));
+    log("guide.pages_fetched", { asked: batch.length, readable: pages.length, unread: unread.length, tooShort: fetched.pages.length - pages.length, failed: fetched.failures.length });
     if (unread.length > 0) {
-      onProgress({ stage: "read", message: `Fetch could not read ${unread.length} page(s); reading them in the TinyFish browser`, endpoint: "browser" });
-      const viaBrowser = await readPagesInBrowser(unread.slice(0, 3), tinyfish).catch((error: Error) => {
+      onProgress({ stage: "read", message: `Fetch could not read ${unread.length} ${plural(unread.length, "page")}; reading them in the TinyFish browser`, endpoint: "browser" });
+      const viaBrowser = await readPagesInBrowser(unread.slice(0, BROWSER_READ_CAP), tinyfish).catch((error: Error) => {
         log("guide.browser_read_failed", { reason: error.message.slice(0, 160) });
         return [];
       });
       browserRead.push(...viaBrowser.map((page) => page.url));
-      subPages.push(...viaBrowser.map((page) => ({ url: page.url, finalUrl: page.url, title: page.title, description: null, text: page.text, links: [], imageLinks: [] })));
-      for (const url of unread.filter((url) => !browserRead.includes(url))) warnings.push(`Could not read ${url} with Fetch or the browser.`);
+      pages.push(...viaBrowser.map((page) => ({ url: page.url, finalUrl: page.url, title: page.title, description: null, text: page.text, links: [], imageLinks: [] })));
+      const lost = unread.filter((url) => !browserRead.includes(url));
+      log("guide.browser_read", { asked: Math.min(unread.length, BROWSER_READ_CAP), read: viaBrowser.length, lost: lost.length });
+      for (const url of lost) warnings.push(`Could not read ${url} with Fetch or the browser.`);
     }
+    return pages;
+  };
+
+  let subPages: FetchedPage[] = [];
+  if (toRead.length > 0) {
+    onProgress({ stage: "read", message: `Reading ${toRead.length} more ${plural(toRead.length, "page")}: ${toRead.map((page) => page.kind).join(", ")}`, endpoint: "fetch" });
+    subPages = await readPages(toRead);
   }
 
   const kindOf = (url: string) => toRead.find((page) => page.url === url || page.url === url.replace(/\/$/, ""))?.kind ?? "product";
-  const corpus: CorpusPage[] = cleanPages([
-    { url: site.homepage, kind: "home", title: fetchedHome?.title ?? null, text: homeText, via: homeVia },
-    ...subPages.map((page) => ({ url: page.url, kind: kindOf(page.url), title: page.title, text: page.text, via: browserRead.includes(page.url) ? ("browser" as const) : ("fetch" as const) })),
-  ]);
-  const metrics = measureWriting(corpus);
+  const buildCorpus = (): CorpusPage[] => {
+    const cleaned = cleanPages([
+      { url: site.homepage, kind: "home", title: fetchedHome?.title ?? null, text: homeText, via: homeVia },
+      ...subPages.map((page) => ({ url: page.url, kind: kindOf(page.url), title: page.title, text: page.text, via: browserRead.includes(page.url) ? ("browser" as const) : ("fetch" as const) })),
+    ]);
+    // Pages that were only navigation or boilerplate clean down to almost nothing; they are not copy.
+    const kept = cleaned.filter((page) => page.kind === "home" || wordCount(page.text) >= MIN_PAGE_WORDS);
+    if (kept.length < cleaned.length) log("guide.pages_dropped_empty", { dropped: cleaned.length - kept.length, minWords: MIN_PAGE_WORDS });
+    return kept;
+  };
+  let corpus = buildCorpus();
+  let metrics = measureWriting(corpus);
+  if ((corpus.length < MIN_CORPUS_PAGES || metrics.wordsAnalysed < TARGET_CORPUS_WORDS) && sectionPages.length > 0) {
+    // Planned pages came back empty, too short or hub pages with little prose; read spare site sections too.
+    const spare = sectionPages.splice(0, SPARE_PAGES);
+    log("guide.spare_pages", { pages: corpus.length, words: metrics.wordsAnalysed, minPages: MIN_CORPUS_PAGES, targetWords: TARGET_CORPUS_WORDS, trying: spare.length });
+    onProgress({ stage: "read", message: `Only ${corpus.length} ${plural(corpus.length, "page")} and ${metrics.wordsAnalysed} words so far; reading ${spare.length} more site ${plural(spare.length, "section")}`, endpoint: "fetch" });
+    toRead.push(...spare);
+    subPages.push(...(await readPages(spare)));
+    corpus = buildCorpus();
+    metrics = measureWriting(corpus);
+  }
+  if (corpus.length < THIN_CORPUS_PAGES || metrics.wordsAnalysed < THIN_CORPUS_WORDS) {
+    warnings.push(`Voice and messaging are based on limited copy (${corpus.length} ${plural(corpus.length, "page")}, ${metrics.wordsAnalysed} words), so treat them as a first draft.`);
+    log("guide.corpus_thin", { pages: corpus.length, words: metrics.wordsAnalysed, minPages: THIN_CORPUS_PAGES, minWords: THIN_CORPUS_WORDS });
+  } else {
+    log("guide.corpus_ok", { pages: corpus.length, words: metrics.wordsAnalysed, viaBrowser: corpus.filter((page) => page.via === "browser").length });
+  }
 
-  onProgress({ stage: "voice", message: `Analysing tone of voice across ${corpus.length} pages (${metrics.wordsAnalysed} words)`, endpoint: "llm" });
+  onProgress({ stage: "voice", message: `Analysing tone of voice across ${corpus.length} ${plural(corpus.length, "page")} (${metrics.wordsAnalysed} words)`, endpoint: "llm" });
   const [voice, rendered] = await Promise.all([
     analyseVoice({ brandHint: site.nameGuess, pages: corpus, metrics }),
     rendering,
@@ -202,6 +268,14 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
   });
   onProgress({ stage: "done", message: `Brand guide ready in ${Math.round(guide.provenance.durationMs / 1000)}s` });
   return guide;
+}
+
+function plural(count: number, word: string): string {
+  return count === 1 ? word : `${word}s`;
+}
+
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
 }
 
 function isBrandPage(url: string): boolean {

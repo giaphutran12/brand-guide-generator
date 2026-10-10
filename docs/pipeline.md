@@ -22,8 +22,8 @@ The browser render and the Fetch-then-model path run in parallel; a guide takes 
 
 | Endpoint | Used for | Why it matters |
 |---|---|---|
-| **Search** | Resolve "Duolingo" to `duolingo.com`, skipping Wikipedia, LinkedIn, app stores and dictionaries. Find the brand's own guidelines or press-kit page with `include_domains`. When a homepage exposes few links, find its about, product and careers pages. | Lets the tool work from just a company name, and finds official brand rules when a site publishes them. |
-| **Fetch** | Read the homepage and up to 8 more pages as clean Markdown, with links. This is the text corpus for voice, messaging, proof points and official colours. | Voice and messaging come from the whole site, not a homepage summary. |
+| **Search** | Resolve "Duolingo" to `duolingo.com`, skipping Wikipedia, LinkedIn, app stores and dictionaries. Find the brand's own guidelines or press-kit page with `include_domains`. When fewer than 3 named pages are found, find the site's about, product and careers pages. | Lets the tool work from just a company name, and finds official brand rules when a site publishes them. |
+| **Fetch** | Read the homepage and up to 8 more pages (plus up to 3 spares when the corpus is thin) as clean Markdown, with links. This is the text corpus for voice, messaging, proof points and official colours. | Voice and messaging come from the whole site, not a homepage summary. |
 | **Browser** | A remote browser session driven over CDP (`playwright-core` `connectOverCDP`). Renders the homepage at 1440px and measures computed styles. Also reads pages Fetch could not extract. | Colours, fonts and logos only exist after CSS and JavaScript run. |
 
 Every call is recorded in `provenance.tinyfish` with its purpose, input, result and time. The guide page shows that table.
@@ -70,6 +70,21 @@ Every call is recorded in `provenance.tinyfish` with its purpose, input, result 
 
 The model must quote verbatim. After it answers, code checks every quote, key phrase, tagline and official hex code against the fetched text; anything not on the page is dropped and counted in `provenance.verification`. In the demo runs, 0 quotes were dropped.
 
+## How the voice corpus is built
+
+Voice and messaging are only as good as the copy behind them, so `src/lib/guide.ts` works to reach at least 4 pages and about 1,500 words (healthy sites such as Stripe land at 8 pages and 3,800 words). In order:
+
+1. **Named pages.** `planPages` (`src/lib/pages.ts`) picks one page per kind from the homepage links: about, product, pricing, customers, blog, careers, brand.
+2. **Rendered links.** If fewer than 5 pages were planned and Fetch returned fewer than 25 distinct same-site pages, the links from the rendered homepage (the browser render collects them) are added and the plan is rerun.
+3. **Search.** If still fewer than 3 pages, Search looks for the site's about, product and careers pages.
+4. **Site sections.** Sites with no about / product / pricing pages (a tourism board, a marketplace, a magazine) get `planSectionPages`: same-host links grouped by first path segment, one page per section (standalone top-level pages first, then section hubs by size). Links in another locale than the homepage (`/fr/` when the homepage is `/en/`), files, and account, legal, search and map pages are skipped. This tops the plan up to 5 pages; the pages are labelled `section`.
+5. **Browser fallback.** Pages Fetch cannot read or that come back under 200 characters are opened in one browser session, up to 5 per batch.
+6. **Spare sections.** After cleaning, if the corpus has fewer than 4 pages or under 1,500 words, up to 3 spare sections are read the same way.
+7. **Cleaning.** Pages left with fewer than 40 words after navigation and repeated lines are removed are dropped as stubs. The per-page (6,000 characters) and total (32,000 characters) caps in `src/lib/corpus.ts` are unchanged.
+8. **Warning.** If the corpus is still under 3 pages or 800 words, `provenance.warnings` says voice and messaging are based on limited copy.
+
+Each step logs its counts (`guide.rendered_links`, `guide.section_fallback`, `guide.pages_fetched`, `guide.browser_read`, `guide.spare_pages`, `guide.corpus_ok` or `guide.corpus_thin`). A homepage that redirects to a locale root (`france.fr` to `/en/`) is handled by Fetch, which follows redirects; the planner already ignores locale prefixes when matching page kinds.
+
 ## Exports
 
 `src/lib/exporters.ts` turns the guide into:
@@ -85,5 +100,6 @@ The model must quote verbatim. After it answers, code checks every quote, key ph
 
 - The render retries once with a fresh session, and the page is considered ready by polling `document.readyState` rather than relying on CDP lifecycle events.
 - If the render still fails, the guide is returned without colours and type, with a warning in `provenance.warnings`.
-- Pages Fetch cannot read go to one browser session. Anything still unread is listed as a warning.
+- Pages Fetch cannot read go to one browser session (up to 5 pages). Anything still unread is listed as a warning.
+- A thin corpus (under 3 pages or 800 words) adds a "limited copy" warning rather than failing.
 - All steps log one-line `[brand-guide]` events with counts, sizes, timings and reasons. Page bodies and keys are never logged.
