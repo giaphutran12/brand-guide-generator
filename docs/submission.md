@@ -19,7 +19,9 @@ Live demo: https://brand-guide-generator.vercel.app (try any URL or name). Run l
 
 Built a brand guide generator for the @TinyFish Student Bounty. Try it: https://brand-guide-generator.vercel.app
 
-Type a URL, or just a company name, and it reads the live site and hands back a usable brand guide: logo, colour palette, typography, tone of voice and key messaging. It exports to Figma design tokens, CSS, Tailwind or a PDF deck.
+Most brands never publish a style guide. Hand-made collections like getdesign.md cover around 70 big names; for every other site, you have to read it live.
+
+So: type a URL, or just a company name, and it reads the live site and hands back a usable brand guide: logo, colour palette, typography, tone of voice and key messaging. It exports to Figma design tokens, CSS, Tailwind or a PDF deck.
 
 How TinyFish powers it:
 - Search finds the official site and the brand's own guidelines page
