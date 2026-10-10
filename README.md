@@ -2,6 +2,8 @@
 
 Give it a company website, or just a company name, and get back a brand guide you can use: logo, colour palette, typography, tone of voice and key messaging, all pulled from the live site with [TinyFish](https://tinyfish.ai).
 
+**Live demo: https://brand-guide-generator.vercel.app** (the six example guides load instantly; a live run takes 35 to 105 seconds).
+
 Results come back as a page you can present (and save as a 16:9 PDF deck), as structured JSON, and as files design tools read directly: W3C design tokens (Tokens Studio for Figma, Style Dictionary), CSS variables, a Tailwind v4 theme and Markdown.
 
 ## How TinyFish is used

@@ -26,7 +26,8 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
   const warnings: string[] = [];
   log("guide.start", { inputChars: input.length });
 
-  onProgress({ stage: "resolve", message: `Finding the official site for "${input}"`, endpoint: "search" });
+  // No endpoint badge yet: a URL input never calls Search. The next event carries it when Search ran.
+  onProgress({ stage: "resolve", message: `Finding the official site for "${input}"` });
   const site = await resolveSite(input, tinyfish);
   onProgress({ stage: "resolve", message: `Using ${site.homepage}`, endpoint: site.resolvedBy === "search" ? "search" : undefined });
 

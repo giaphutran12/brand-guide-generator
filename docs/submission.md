@@ -13,11 +13,11 @@ Accuracy: every quote, tagline and key phrase the model writes is checked agains
 
 Demos in examples/: stripe.com, linear.app, Duolingo, Patagonia and Airbnb (the last three by name only), and figma.com. Primaries match the real brand colours: Stripe #533AFD, Linear #5E6AD2, Duolingo #58CC02, Airbnb #FF385C.
 
-To test: npm install, put TINYFISH_API_KEY and OPENAI_API_KEY in .env.local, npm run dev, then enter any URL or name. API: POST /api/brand-guide {"input":"..."} streams progress; GET /api/brand-guide?input=...&format=tokens|css|tailwind|md|json returns one export.
+Live demo: https://brand-guide-generator.vercel.app (try any URL or name). Run locally: npm install, put TINYFISH_API_KEY and OPENAI_API_KEY in .env.local, npm run dev, then enter any URL or name. API: POST /api/brand-guide {"input":"..."} streams progress; GET /api/brand-guide?input=...&format=tokens|css|tailwind|md|json returns one export.
 
 ## LinkedIn post (draft)
 
-Built a brand guide generator for the @TinyFish Student Bounty.
+Built a brand guide generator for the @TinyFish Student Bounty. Try it: https://brand-guide-generator.vercel.app
 
 Type a URL, or just a company name, and it reads the live site and hands back a usable brand guide: logo, colour palette, typography, tone of voice and key messaging. It exports to Figma design tokens, CSS, Tailwind or a PDF deck.
 
@@ -36,4 +36,5 @@ Built a brand guide generator on @TinyFish: URL or company name in; logo, palett
 
 Search finds the site, Fetch reads 9 pages, Browser measures the real colours and fonts. Every quote is verified against the page.
 
+https://brand-guide-generator.vercel.app
 https://github.com/giaphutran12/brand-guide-generator
