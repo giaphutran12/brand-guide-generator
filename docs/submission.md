@@ -28,7 +28,7 @@ How TinyFish powers it:
 
 Every quote in the guide is checked against the page it came from. Tested on Stripe, Linear, Duolingo, Patagonia, Airbnb and Figma; it pulled Stripe's #533AFD and Airbnb's #FF385C straight from their sites.
 
-[repo link] #TinyFish #buildinpublic
+https://github.com/giaphutran12/brand-guide-generator #TinyFish #buildinpublic
 
 ## X post (draft)
 
@@ -36,4 +36,4 @@ Built a brand guide generator on @TinyFish: URL or company name in; logo, palett
 
 Search finds the site, Fetch reads 9 pages, Browser measures the real colours and fonts. Every quote is verified against the page.
 
-[repo link]
+https://github.com/giaphutran12/brand-guide-generator
