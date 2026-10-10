@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "guide": "tsx scripts/guide.ts"
+    "guide": "tsx scripts/guide.ts",
+    "exports": "tsx scripts/exports.ts"
   },
   "license": "MIT",
   "dependencies": {

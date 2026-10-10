@@ -4,7 +4,7 @@ Give it a company website, or just a company name, and get back a brand guide yo
 
 **Live demo: https://brand-guide-generator.vercel.app** (the six example guides load instantly; a live run takes 35 to 105 seconds).
 
-Results come back as a page you can present (and save as a 16:9 PDF deck), as structured JSON, and as files design tools read directly: W3C design tokens (Tokens Studio for Figma, Style Dictionary), CSS variables, a Tailwind v4 theme and Markdown.
+Results come back as a page you can present (and save as a 16:9 PDF deck), as structured JSON, and as files design tools read directly: W3C design tokens (Tokens Studio for Figma, Style Dictionary), CSS variables, a Tailwind v4 theme, Markdown, and a [DESIGN.md](https://github.com/google-labs-code/design.md) that coding agents read. Hand-made DESIGN.md collections cover a few dozen big brands; this makes one for any site on demand.
 
 ## How TinyFish is used
 
@@ -63,7 +63,7 @@ npm run guide -- "Duolingo"
 curl -N -X POST http://localhost:3000/api/brand-guide \
   -H 'Content-Type: application/json' -d '{"input":"linear.app"}'
 
-# One finished export: json | tokens | css | tailwind | md
+# One finished export: json | tokens | css | tailwind | md | design
 curl 'http://localhost:3000/api/brand-guide?input=Duolingo&format=tokens'
 ```
 

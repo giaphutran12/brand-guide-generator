@@ -87,13 +87,14 @@ Each step logs its counts (`guide.rendered_links`, `guide.section_fallback`, `gu
 
 ## Exports
 
-`src/lib/exporters.ts` turns the guide into:
+`src/lib/exporters.ts` turns the guide into the files below. `npm run exports` rewrites them for every example from its saved `brand.json`, without re-crawling.
 
 - `brand.json`: the full guide, schema `brand-guide/v1`.
 - `tokens.json`: W3C Design Tokens (DTCG) for colours, font families and typography composites. Importable with Tokens Studio for Figma or Style Dictionary.
 - `brand.css`: `:root` custom properties.
 - `tailwind.css`: a Tailwind v4 `@theme` block.
 - `brand-guide.md`: a Markdown guide for docs, Notion or speaker notes.
+- `DESIGN.md`: Google's open [DESIGN.md](https://github.com/google-labs-code/design.md) format (version `alpha`), YAML tokens plus prose that coding agents and Stitch read. Token names follow the spec's recommended names (`primary`, `secondary`, `tertiary`, `background`, `surface`, `on-surface`, `on-primary`; `headline-display`, `headline-lg`, `body-md`, `label-lg`). Buttons become `components.button-primary` (the one filled with the primary colour) and `button-secondary`, with `{colors.*}` references when a button colour is in the palette. `rounded` comes from measured button radii. `spacing` and elevation are not measured, so they are left out rather than guessed. Do's and Don'ts combine the contrast checks with the voice traits. All six examples pass `npx @google/design.md lint` with 0 errors; the remaining warnings are real (Duolingo's white-on-green button is 2.09:1, and some palette colours are used by no button).
 - "Save as PDF deck": a print stylesheet with one 16:9 page per section.
 
 ## Failure handling

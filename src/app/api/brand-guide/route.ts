@@ -1,5 +1,5 @@
 // POST /api/brand-guide            {"input": "stripe.com"}  -> NDJSON stream: progress events, then the guide
-// GET  /api/brand-guide?input=...&format=json|tokens|css|tailwind|md  -> one finished export (for tools and scripts)
+// GET  /api/brand-guide?input=...&format=json|tokens|css|tailwind|md|design  -> one finished export (for tools and scripts)
 
 import { exportGuide, EXPORTS, type ExportFormat } from "@/lib/exporters";
 import { generateBrandGuide } from "@/lib/guide";
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const input = validateInput(params.get("input"));
   const format = (params.get("format") ?? "json") as ExportFormat;
-  if (!input) return Response.json({ error: "Use ?input=<company URL or name>&format=json|tokens|css|tailwind|md" }, { status: 400 });
+  if (!input) return Response.json({ error: "Use ?input=<company URL or name>&format=json|tokens|css|tailwind|md|design" }, { status: 400 });
   if (!(format in EXPORTS)) return Response.json({ error: `Unknown format. Use one of: ${Object.keys(EXPORTS).join(", ")}` }, { status: 400 });
   if (!cache.has(cacheKey(input)) && rateLimited(request)) return Response.json({ error: "Rate limit reached." }, { status: 429 });
 

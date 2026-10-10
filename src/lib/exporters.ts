@@ -3,11 +3,12 @@
 //   css      -> :root custom properties
 //   tailwind -> Tailwind v4 @theme block
 //   md       -> a Markdown brand guide for docs, Notion or speaker notes
+//   design   -> DESIGN.md (google-labs-code/design.md): YAML tokens + prose that coding agents and Stitch read
 
 import { parseColor, toHex } from "./color";
-import type { BrandColor, BrandGuide } from "./types";
+import type { BrandColor, BrandGuide, ColorRole, TypeStyle } from "./types";
 
-export type ExportFormat = "json" | "tokens" | "css" | "tailwind" | "md";
+export type ExportFormat = "json" | "tokens" | "css" | "tailwind" | "md" | "design";
 
 export const EXPORTS: Record<ExportFormat, { label: string; contentType: string; extension: string }> = {
   json: { label: "Brand guide JSON", contentType: "application/json", extension: "brand.json" },
@@ -15,6 +16,7 @@ export const EXPORTS: Record<ExportFormat, { label: string; contentType: string;
   css: { label: "CSS variables", contentType: "text/css", extension: "brand.css" },
   tailwind: { label: "Tailwind v4 theme", contentType: "text/css", extension: "tailwind.css" },
   md: { label: "Markdown brand guide", contentType: "text/markdown", extension: "brand-guide.md" },
+  design: { label: "DESIGN.md (for AI agents)", contentType: "text/markdown", extension: "DESIGN.md" },
 };
 
 export function exportGuide(guide: BrandGuide, format: ExportFormat): string {
@@ -29,6 +31,8 @@ export function exportGuide(guide: BrandGuide, format: ExportFormat): string {
       return toTailwind(guide);
     case "md":
       return toMarkdown(guide);
+    case "design":
+      return toDesignMd(guide);
   }
 }
 
@@ -178,6 +182,191 @@ function toMarkdown(guide: BrandGuide): string {
 
   push("## Sources", "", ...guide.sources.pages.map((page) => `- ${page.kind}: ${page.url}`), "");
   return lines.join("\n");
+}
+
+// DESIGN.md (https://github.com/google-labs-code/design.md, version "alpha"). Token names use the
+// spec's recommended names where a role maps cleanly; the spec accepts any other name.
+const DESIGN_COLOR_NAMES: Record<ColorRole, string[]> = {
+  primary: ["primary"],
+  accent: ["secondary", "tertiary"],
+  background: ["background"],
+  surface: ["surface"],
+  text: ["on-surface"],
+  "muted-text": ["on-surface-variant"],
+  neutral: ["neutral"],
+  official: ["official"],
+};
+
+const DESIGN_COLOR_ROLES: Record<ColorRole, string> = {
+  primary: "Primary brand colour",
+  accent: "Accent",
+  background: "Page background",
+  surface: "Surface for cards and sections",
+  text: "Main text",
+  "muted-text": "Secondary text",
+  neutral: "Neutral",
+  official: "Official colour from the brand's own guidelines",
+};
+
+const DESIGN_TYPE_NAMES: Record<TypeStyle["role"], string> = {
+  display: "headline-display",
+  heading: "headline-lg",
+  subheading: "headline-md",
+  body: "body-md",
+  navigation: "label-md",
+  button: "label-lg",
+  code: "code",
+};
+
+const BUTTON_NAMES = ["button-primary", "button-secondary", "button-tertiary"];
+
+function designColorNames(palette: BrandColor[]): { token: string; color: BrandColor }[] {
+  const counts = new Map<ColorRole, number>();
+  return palette.map((color) => {
+    const index = counts.get(color.role) ?? 0;
+    counts.set(color.role, index + 1);
+    const base = color.role === "accent" ? "accent" : DESIGN_COLOR_NAMES[color.role][0];
+    return { token: DESIGN_COLOR_NAMES[color.role][index] ?? `${base}-${index + 1}`, color };
+  });
+}
+
+/** "4px" -> sm, "9999px" or "50%" -> full. Null when the computed radius is not a length. */
+function radiusLevel(radius: string): { level: string; value: string } | null {
+  const px = Number.parseFloat(radius);
+  if (radius.trim().endsWith("%") || px >= 999) return { level: "full", value: "9999px" };
+  if (!Number.isFinite(px)) return null;
+  const level = px <= 0 ? "none" : px <= 4 ? "sm" : px <= 8 ? "md" : px <= 16 ? "lg" : "xl";
+  return { level, value: `${round(px)}px` };
+}
+
+function round(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function toneWords(spectrum: BrandGuide["voice"]["toneSpectrum"]): string {
+  const axes: [number, string, string][] = [
+    [spectrum.formalToCasual, "formal", "casual"],
+    [spectrum.seriousToPlayful, "serious", "playful"],
+    [spectrum.technicalToPlain, "technical", "plain-spoken"],
+    [spectrum.understatedToBold, "understated", "bold"],
+  ];
+  return axes.map(([value, low, high]) => (value <= 35 ? low : value >= 65 ? high : `between ${low} and ${high}`)).join(", ");
+}
+
+function toDesignMd(guide: BrandGuide): string {
+  const { brand, voice } = guide;
+  const q = (value: string) => JSON.stringify(value); // a JSON string is a valid YAML double-quoted scalar
+  const colors = designColorNames(guide.colors.palette);
+  const colorRef = new Map(colors.map(({ token, color }) => [color.hex.toUpperCase(), `{colors.${token}}`]));
+  const primary = colors.find(({ color }) => color.role === "primary");
+
+  const typeStyles = guide.typography.scale.filter((style, index, scale) => scale.findIndex((other) => other.role === style.role) === index);
+
+  // Buttons: the one filled with the primary colour comes first, so it becomes button-primary.
+  const buttons = guide.components.buttons
+    .map((button) => {
+      const background = parseColor(button.background);
+      const text = parseColor(button.color);
+      const hexOrCss = (parsed: ReturnType<typeof parseColor>, raw: string) => (parsed && parsed.a >= 1 ? toHex(parsed) : raw);
+      return { button, background: hexOrCss(background, button.background), text: hexOrCss(text, button.color), radius: radiusLevel(button.radius) };
+    })
+    .sort((a, b) => Number(b.background === primary?.color.hex) - Number(a.background === primary?.color.hex));
+  const rounded = new Map<string, string>();
+  for (const { radius } of buttons) if (radius && !rounded.has(radius.level)) rounded.set(radius.level, radius.value);
+
+  const yaml: string[] = ["---", "version: alpha", `name: ${q(brand.name)}`, `description: ${q(brand.tagline ?? brand.elevatorPitch)}`, "colors:"];
+  for (const { token, color } of colors) yaml.push(`  ${token}: ${q(color.hex)}`);
+  if (primary) yaml.push(`  on-primary: ${q(primary.color.bestTextColor)}`);
+  if (typeStyles.length) yaml.push("typography:");
+  for (const style of typeStyles) {
+    yaml.push(`  ${DESIGN_TYPE_NAMES[style.role]}:`, `    fontFamily: ${q(style.family)}`, `    fontSize: ${round(style.sizePx)}px`, `    fontWeight: ${style.weight}`);
+    if (style.lineHeight !== null) yaml.push(`    lineHeight: ${round(style.lineHeight)}`);
+    yaml.push(`    letterSpacing: ${round(style.letterSpacingEm)}em`);
+  }
+  if (rounded.size) yaml.push("rounded:", ...[...rounded].map(([level, value]) => `  ${level}: ${value}`));
+  if (buttons.length) yaml.push("components:");
+  const buttonType = typeStyles.find((style) => style.role === "button");
+  buttons.forEach(({ button, background, text, radius }, index) => {
+    yaml.push(
+      `  ${BUTTON_NAMES[index] ?? `button-${index + 1}`}:`,
+      `    backgroundColor: ${q(colorRef.get(background) ?? background)}`,
+      `    textColor: ${q(background === primary?.color.hex && text === primary.color.bestTextColor ? "{colors.on-primary}" : (colorRef.get(text) ?? text))}`,
+    );
+    if (buttonType) yaml.push(`    typography: ${q(`{typography.${DESIGN_TYPE_NAMES.button}}`)}`);
+    if (radius) yaml.push(`    rounded: ${q(`{rounded.${radius.level}}`)}`);
+    yaml.push(`    padding: ${q(button.padding)}`);
+  });
+  yaml.push("---");
+
+  const lines: string[] = [];
+  const push = (...items: string[]) => lines.push(...items);
+  push(
+    `# ${brand.name}`,
+    "",
+    `Extracted from ${brand.url} on ${guide.generatedAt.slice(0, 10)} by Brand Guide Generator. Colours, type and components were measured on the rendered site, and every quote was checked against the page it came from. This describes the live site; it is not an official brand guide.`,
+    "",
+  );
+
+  push("## Overview", "", brand.elevatorPitch, "", voice.summary, "", `Tone: ${toneWords(voice.toneSpectrum)}.`, "");
+  if (guide.messaging.audiences.length) push(`Audiences: ${guide.messaging.audiences.map((audience) => audience.name).join("; ")}.`, "");
+
+  push("## Colors", "", `${colors.length} colours, ordered by role. Share is how much of the rendered page each one covers.`, "");
+  for (const { token, color } of colors) {
+    const seen = color.evidence.slice(0, 2).join("; ");
+    push(`- **${color.name} (${color.hex}):** ${DESIGN_COLOR_ROLES[color.role]} (\`${token}\`), ${color.share}% of the page.${seen ? ` Seen as: ${seen}.` : ""}`);
+  }
+  if (primary) push(`- **On primary (${primary.color.bestTextColor}):** Text and icons on the primary colour (\`on-primary\`), the higher-contrast of black and white. Computed, not measured; the site's own buttons are under Components.`);
+  push("");
+
+  if (typeStyles.length) {
+    push("## Typography", "");
+    for (const family of guide.typography.families) {
+      push(`- **${family.name}** (${family.source}, ${family.category}) for ${family.usedFor.join(", ") || "supporting text"}. Weights ${family.weights.join(", ") || "n/a"}. Stack: \`${family.stack}\`.`);
+    }
+    push("");
+    for (const style of typeStyles) {
+      const lineHeight = style.lineHeight === null ? "" : `, line height ${round(style.lineHeight)}`;
+      const tracking = style.letterSpacingEm ? `, tracking ${round(style.letterSpacingEm)}em` : "";
+      const transform = style.transform && style.transform !== "none" ? `, ${style.transform}` : "";
+      push(`- **${style.role[0].toUpperCase()}${style.role.slice(1)}** (\`${DESIGN_TYPE_NAMES[style.role]}\`): ${style.family} ${round(style.sizePx)}px, weight ${style.weight}${lineHeight}${tracking}${transform}.`);
+    }
+    push("", `Headings are set in ${voice.metrics.headingCase.toLowerCase()}.`, "");
+  }
+
+  if (rounded.size) {
+    push("## Shapes", "", `Measured on buttons: ${[...rounded].map(([level, value]) => `${value} corners (\`rounded.${level}\`)`).join(", ")}.`, "");
+  }
+
+  if (buttons.length) {
+    push("## Components", "");
+    buttons.forEach(({ button, background, text }, index) => {
+      push(`- **${BUTTON_NAMES[index] ?? `button-${index + 1}`}** ("${button.text}"): ${background} background, ${text} text, ${button.radius} radius, padding ${button.padding}, weight ${button.weight}.`);
+    });
+    push("");
+  }
+
+  push("## Do's and Don'ts", "");
+  for (const pairing of guide.colors.pairings) {
+    push(
+      pairing.wcag === "Fail"
+        ? `- Don't use ${pairing.foreground} on ${pairing.background} for text (${pairing.label.toLowerCase()}): ${pairing.ratio}:1 fails WCAG.`
+        : `- Do use ${pairing.foreground} on ${pairing.background} for ${pairing.label.toLowerCase()} (${pairing.ratio}:1, WCAG ${pairing.wcag}).`,
+    );
+  }
+  for (const trait of voice.traits) push(`- Do (${trait.name}): ${trait.do}`, `- Don't (${trait.name}): ${trait.dont}`);
+  if (voice.wordsToAvoid.length) push(`- Don't use these words in copy: ${voice.wordsToAvoid.join(", ")}.`);
+  push("");
+
+  push("## Voice", "", ...voice.styleRules.map((rule) => `- ${rule}`), "");
+  if (voice.preferredWords.length) push(`Words they use: ${voice.preferredWords.join(", ")}.`, "");
+  const sample = voice.traits.flatMap((trait) => trait.evidence).slice(0, 3);
+  if (sample.length) push("How it sounds on their site:", "", ...sample.map((evidence) => `> "${evidence.quote}" (${evidence.sourceUrl})`), "");
+
+  const logo = guide.logo.primary;
+  if (logo?.svg && logo.svg.length <= 8000) push("## Logo", "", "```svg", logo.svg, "```", "");
+  else if (logo?.url) push("## Logo", "", `- ${logo.url}`, "");
+
+  return [...yaml, "", ...lines].join("\n");
 }
 
 /** Button colours arrive as computed CSS strings; show them as hex in the UI. */
