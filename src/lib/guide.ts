@@ -147,7 +147,7 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
 
   let subPages: FetchedPage[] = [];
   if (toRead.length > 0) {
-    onProgress({ stage: "read", message: `Reading ${toRead.length} more ${plural(toRead.length, "page")}: ${toRead.map((page) => page.kind).join(", ")}`, endpoint: "fetch" });
+    onProgress({ stage: "read", message: `Reading ${toRead.length} more ${plural(toRead.length, "page")}: ${toRead.map(pageLabel).join(", ")}`, endpoint: "fetch" });
     subPages = await readPages(toRead);
   }
 
@@ -268,6 +268,16 @@ export async function generateBrandGuide(input: string, onProgress: (event: Prog
   });
   onProgress({ stage: "done", message: `Brand guide ready in ${Math.round(guide.provenance.durationMs / 1000)}s` });
   return guide;
+}
+
+// Named kinds read as themselves; generic sections read as their path ("/en/activities" -> "activities").
+function pageLabel(page: PlannedPage): string {
+  if (page.kind !== "section") return page.kind;
+  try {
+    return decodeURIComponent(new URL(page.url).pathname.split("/").filter(Boolean).pop() ?? "section").replace(/[-_]+/g, " ");
+  } catch {
+    return "section";
+  }
 }
 
 function plural(count: number, word: string): string {
