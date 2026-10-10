@@ -32,9 +32,9 @@ https://github.com/giaphutran12/brand-guide-generator #TinyFish #buildinpublic
 
 ## X post (draft)
 
-Built a brand guide generator on @TinyFish: URL or company name in; logo, palette, fonts, tone of voice and messaging out, as Figma tokens, CSS, Tailwind or a PDF deck.
+Built a brand guide generator on @TinyFish: URL or company name in; logo, colours, fonts and voice out as Figma tokens, CSS or Tailwind.
 
-Search finds the site, Fetch reads 9 pages, Browser measures the real colours and fonts. Every quote is verified against the page.
+Search finds the site, Fetch reads it, Browser measures it. Every quote verified.
 
 https://brand-guide-generator.vercel.app
 https://github.com/giaphutran12/brand-guide-generator
