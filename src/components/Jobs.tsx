@@ -72,6 +72,12 @@ function loadSaved(): Job[] {
 }
 
 function save(jobs: Job[]) {
+  if (jobs.length === 0) {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    return;
+  }
   // Finished guides carry screenshots (~200 KB each); drop the oldest until it fits the quota.
   let kept = jobs.slice(0, MAX_SAVED);
   while (kept.length > 0) {
